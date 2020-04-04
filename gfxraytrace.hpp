@@ -66,6 +66,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <limits>
 
 #include "gfxalgebra.hpp"
 #include "gfximage.hpp"
@@ -755,6 +756,7 @@ scene scene::read_json(const std::string& path) noexcept(false) {
     }
 
     for (auto& sphere : loaded.spheres()) {
+      std::cout<<"Calling sphere intersection"<<std::endl;
       result.add_object(std::make_unique<scene_sphere>(import_color(sphere.material().color()),
                                                        sphere.material().shininess(),
                                                        import_vector(sphere.center()),
@@ -782,20 +784,18 @@ scene scene::read_json(const std::string& path) noexcept(false) {
 
 std::optional<intersection> scene::intersect(const view_ray& ray) const noexcept {
 
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This is the algorithm described in section 4.4.4 and the
-  // pseudocode on page 81.
-  //
-  // Basically, keep track of the range of t values in effect, and
-  // whether a hit was ever found; loop through all scene objects in a
-  // for loop; call that object's ::intersect function to see whether
-  // ray hits the object; and if so, update the t range. At the end,
-  // return an optional that contains the nearest intersection, or an empty
-  // optional when there was no hit.
-
-  return std::nullopt;
+  double t1 = std::numeric_limits<double>::infinity();
+  std::optional<intersection> result_intersect;
+  for(const auto &object: objects_)
+  {
+    auto ret = object->intersect(ray, 0.0, t1);
+    if(ret)
+    {
+      result_intersect = ret;
+      t1 = result_intersect->t();
+    }  
+  }
+  return result_intersect;
 }
 
 hdr_image scene::render() const noexcept {
@@ -818,30 +818,18 @@ hdr_image scene::render() const noexcept {
   for (size_t y = 0; y < h; ++y) {
     for (size_t x = 0; x < w; ++x) {
 
-      // TODO: Fill in the body of this for loop, then delete these
-      // skeleton comments.
-      //
-      // This is the algorithm described by the pseudocode in section
-      // 4.6 of the textbook.
-      //
-      // To do that, perform the following steps:
-      //
-      // - Use the viewport object to compute the (u, v) corresponding
-      //   to (x, y)
-      //
-      // - Use the projection object to create the view ray based on
-      //   that (u, v)
-      //
-      // - Use the scene object to trace the view ray and find an
-      //   intersection. Use a t_upper_bound of infinity, which you
-      //   can obtain with the expression
-      //   std::numeric_limits<double>::infinity() .
-      //
-      // - If there is no intersection, paint result.pixel(x, y) with
-      //   the scene's background color.
-      //
-      // - Otherwise, use the shader object to compute the color for
-      //   result.pixel(x, y) based on the intersection object.
+      auto uv = viewport_->uv(x,y);
+      auto ray = projection_->compute_view_ray(*camera_, uv[0], uv[1]);
+      auto xsect = intersect(ray);
+      if(xsect)
+      {
+        auto color = shader_->shade(*this, *camera_, *xsect);
+        result.pixel(x, y, color);
+      }
+      else
+      {
+        result.pixel(x, y, background_);
+      }
 
     }
   }
@@ -853,63 +841,45 @@ constexpr camera::camera(const vector3<double>& eye,
 	                       const vector3<double>& view_direction,
 	                       const vector3<double>& up) noexcept {
 
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
+
   // Hint: This process is described in section 4.3 on pages
   // 73-74. Those pages refer you back to the vector math described in
   // Section 2.4.7. Don't forget that _w, _u, and _v all need to be
   // normalized. My implementation is only 3 lines long.
+
+  w_ = (-view_direction).normalized();
+  v_ = up.normalized();
+  u_ = v_ * w_;
+  eye_ = eye;
+   
 }
 
 vector2<double> viewport::uv(size_t x, size_t y) const noexcept {
 
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This process is described in section 4.3.1, specifically
-  // equation (4.1). My implementation is only two lines long.
-
-  return vector2<double>();
+  const auto u = left_ + (right_ - left_)*(x + 0.5)/x_resolution_;
+  const auto v = bottom_ + (top_ - bottom_)*(y + 0.5)/y_resolution_;
+  
+  return vector2<double>{u,v};
 }
 
 view_ray orthographic_projection::compute_view_ray(const camera& c,
 					                                         double u,
 					                                         double v) const noexcept {
-
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This process is described in section 4.3.1, specifically
-  // the pseudocode on page 75. My implementation is only two lines
-  // long.
-  return view_ray(gfx::vector3<double>(), gfx::vector3<double>());
+  view_ray ray(c.eye() + c.u()*u + c.v()*v, -c.w());
+  return ray;
 }
 
 view_ray perspective_projection::compute_view_ray(const camera& c,
 					                                        double u,
 					                                        double v) const noexcept {
-
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This process is described in section 4.3.2, specifically
-  // the pseudocode on the top of page 76. My implementation is only
-  // two lines long.
-  return view_ray(gfx::vector3<double>(), gfx::vector3<double>());
+  view_ray ray(c.eye(), -(c.w()*focal_length_ + c.u()*u + c.v()*v));
+  return ray;
 }
 
 hdr_rgb flat_shader::shade(const scene& scene,
 			                     const camera& camera,
 			                     const intersection& xsect) const noexcept {
-
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: Just return the color of the intersecting object,
-  // unchanged. My implementation is only one line long, and it's
-  // simple.
-  return BLACK;
+  return xsect.object().color();
 }
 
 hdr_rgb blinn_phong_shader::shade(const scene& scene,
@@ -938,17 +908,53 @@ std::optional<intersection>
     const view_ray& ray,
     double t_min,
     double t_upper_bound) const noexcept {
-
   assert(t_min < t_upper_bound);
 
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This process is described very precisely in section
-  // 4.4.1. Implement that algorithm carefully. Recall that a ray may
-  // intersect a sphere at 0, 1, or 2 points; in the 2-point case, you
-  // need to use the closer point (smaller t value).
-  return std::nullopt;
+  double discriminant = std::pow((ray.direction() *(ray.origin() - center_)),2) * (ray.direction() * ray.direction()) * ((ray.origin() - center_) * (ray.origin() - center_) - std::pow(radius_,2));
+  double t = 0.0;
+  if(discriminant > 0) //Intersection at two points
+  {
+      const double t1 = (-ray.direction()*(ray.origin() - center_) - std::sqrt(discriminant))/ (ray.direction() * ray.direction());
+      const double t2 = (-ray.direction()*(ray.origin() - center_) + std::sqrt(discriminant))/ (ray.direction() * ray.direction());
+
+      if((t1 < t_upper_bound && t1 > t_min) && (t2 < t_upper_bound && t2 > t_min) )
+      {
+        if(t1 < t2)
+          t = t1;
+        else
+          t = t2;
+      }
+      else if (t1 < t_upper_bound && t1 > t_min)
+      {
+        t = t1;
+      }
+      else if (t2 < t_upper_bound && t2 > t_min)
+      {
+        t = t2;
+      }
+      else
+      {
+        return std::nullopt;
+      }
+      vector3<double> p = ray.origin() + ray.direction() * t;
+      vector3<double> normal = (p - center_) * 2.0;
+      vector3<double> location = (p - center_)/radius_;
+      return intersection(this, location.normalized(), normal.normalized(), t);
+  }
+  else if(discriminant == 0) // Intersection at one point
+  {  
+    t = (-ray.direction()*(ray.origin() - center_) + std::sqrt(discriminant))/ (ray.direction() * ray.direction());
+    if(t > t_upper_bound || t < t_min)
+    {
+      return std::nullopt;   
+    }
+    vector3<double> p = ray.origin() + ray.direction() * t;
+    vector3<double> normal = (p - center_) * 2.0;
+    vector3<double> location = (p - center_)/radius_;
+    return intersection(this, location.normalized(), normal.normalized(), t);
+  }
+  // No intersection
+  return std::nullopt; 
 }
 
 std::optional<intersection>
