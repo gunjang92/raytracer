@@ -67,6 +67,7 @@
 #include <variant>
 #include <vector>
 #include <limits>
+#include <algorithm>
 
 #include "gfxalgebra.hpp"
 #include "gfximage.hpp"
@@ -756,7 +757,6 @@ scene scene::read_json(const std::string& path) noexcept(false) {
     }
 
     for (auto& sphere : loaded.spheres()) {
-      std::cout<<"Calling sphere intersection"<<std::endl;
       result.add_object(std::make_unique<scene_sphere>(import_color(sphere.material().color()),
                                                        sphere.material().shininess(),
                                                        import_vector(sphere.center()),
@@ -784,15 +784,16 @@ scene scene::read_json(const std::string& path) noexcept(false) {
 
 std::optional<intersection> scene::intersect(const view_ray& ray) const noexcept {
 
+  double t0 = 0.0;
   double t1 = std::numeric_limits<double>::infinity();
   std::optional<intersection> result_intersect;
   for(const auto &object: objects_)
   {
-    auto ret = object->intersect(ray, 0.0, t1);
+    auto ret = object->intersect(ray, t0, t1);
     if(ret)
     {
-      result_intersect = ret;
-      t1 = result_intersect->t();
+        result_intersect = ret;
+        t1 = result_intersect->t();
     }  
   }
   return result_intersect;
@@ -840,16 +841,9 @@ hdr_image scene::render() const noexcept {
 constexpr camera::camera(const vector3<double>& eye,
 	                       const vector3<double>& view_direction,
 	                       const vector3<double>& up) noexcept {
-
-
-  // Hint: This process is described in section 4.3 on pages
-  // 73-74. Those pages refer you back to the vector math described in
-  // Section 2.4.7. Don't forget that _w, _u, and _v all need to be
-  // normalized. My implementation is only 3 lines long.
-
   w_ = (-view_direction).normalized();
-  v_ = up.normalized();
-  u_ = v_ * w_;
+  u_ = up.normalized().cross(w_);
+  v_ = w_.cross(u_);
   eye_ = eye;
    
 }
@@ -858,7 +852,7 @@ vector2<double> viewport::uv(size_t x, size_t y) const noexcept {
 
   const auto u = left_ + (right_ - left_)*(x + 0.5)/x_resolution_;
   const auto v = bottom_ + (top_ - bottom_)*(y + 0.5)/y_resolution_;
-  
+
   return vector2<double>{u,v};
 }
 
@@ -872,7 +866,7 @@ view_ray orthographic_projection::compute_view_ray(const camera& c,
 view_ray perspective_projection::compute_view_ray(const camera& c,
 					                                        double u,
 					                                        double v) const noexcept {
-  view_ray ray(c.eye(), -(c.w()*focal_length_ + c.u()*u + c.v()*v));
+  view_ray ray(c.eye(), c.w()*(-focal_length_) + c.u()*u + c.v()*v);
   return ray;
 }
 
@@ -900,7 +894,19 @@ hdr_rgb blinn_phong_shader::shade(const scene& scene,
   // After evaluating equation (4.4), clamp the intensity values to
   // [0, 1]. Otherwise some very bright pixels could end up with
   // intensity values greater than 1.
-  return BLACK;
+  double L = 0.0;
+  for(const auto &light : scene.lights()){
+    auto l = light->location() - xsect.t();
+    vector3<double> h = (camera.v() + l).normalized();
+
+    L += diffuse_coefficient_ * std::max(0.0,xsect.normal()* l.normalized()) + specular_coefficient_ * std::pow(std::max(0.0,xsect.normal()*h), 10);
+  }
+  L = std::clamp(L, 0.0, 1.0);
+  const float Lr = std::clamp((ambient_coefficient_ * ambient_color_.r() + L),0.0,1.0);
+  const float Lg = std::clamp((ambient_coefficient_ * ambient_color_.g() + L),0.0,1.0);
+  const float Lb = std::clamp((ambient_coefficient_ * ambient_color_.b() + L),0.0,1.0);
+  auto color = xsect.object().color();
+  return hdr_rgb{color.r()*Lr, color.g()*Lg, color.b()*Lb}; 
 }
 
 std::optional<intersection>
@@ -910,48 +916,34 @@ std::optional<intersection>
     double t_upper_bound) const noexcept {
   assert(t_min < t_upper_bound);
 
-  double discriminant = std::pow((ray.direction() *(ray.origin() - center_)),2) * (ray.direction() * ray.direction()) * ((ray.origin() - center_) * (ray.origin() - center_) - std::pow(radius_,2));
+  double discriminant = std::pow((ray.direction() *(ray.origin() - center_)),2) - (ray.direction() * ray.direction()) * ((ray.origin() - center_) * (ray.origin() - center_) - std::pow(radius_,2));
   double t = 0.0;
-  if(discriminant > 0) //Intersection at two points
+  if(discriminant < 0)
   {
-      const double t1 = (-ray.direction()*(ray.origin() - center_) - std::sqrt(discriminant))/ (ray.direction() * ray.direction());
-      const double t2 = (-ray.direction()*(ray.origin() - center_) + std::sqrt(discriminant))/ (ray.direction() * ray.direction());
+      // No intersection
+      return std::nullopt;
+  } 
+  else //Intersection at one or two points
+  {
+      const double t1 = ((-ray.direction()*(ray.origin() - center_)) - std::sqrt(discriminant))/ (ray.direction() * ray.direction());
+      const double t2 = ((-ray.direction()*(ray.origin() - center_)) + std::sqrt(discriminant))/ (ray.direction() * ray.direction());
 
-      if((t1 < t_upper_bound && t1 > t_min) && (t2 < t_upper_bound && t2 > t_min) )
-      {
-        if(t1 < t2)
-          t = t1;
-        else
-          t = t2;
-      }
-      else if (t1 < t_upper_bound && t1 > t_min)
-      {
+      if(t1 < t2)
         t = t1;
-      }
-      else if (t2 < t_upper_bound && t2 > t_min)
-      {
+      else
         t = t2;
+
+      if (t < t_upper_bound && t > t_min)
+      {
+        vector3<double> p = ray.origin() + ray.direction() * t;
+        vector3<double> normal = (p - center_) * 2.0;
+        vector3<double> location = (p - center_)/radius_;
+        return intersection(this, location.normalized(), normal.normalized(), t);
       }
       else
       {
         return std::nullopt;
       }
-      vector3<double> p = ray.origin() + ray.direction() * t;
-      vector3<double> normal = (p - center_) * 2.0;
-      vector3<double> location = (p - center_)/radius_;
-      return intersection(this, location.normalized(), normal.normalized(), t);
-  }
-  else if(discriminant == 0) // Intersection at one point
-  {  
-    t = (-ray.direction()*(ray.origin() - center_) + std::sqrt(discriminant))/ (ray.direction() * ray.direction());
-    if(t > t_upper_bound || t < t_min)
-    {
-      return std::nullopt;   
-    }
-    vector3<double> p = ray.origin() + ray.direction() * t;
-    vector3<double> normal = (p - center_) * 2.0;
-    vector3<double> location = (p - center_)/radius_;
-    return intersection(this, location.normalized(), normal.normalized(), t);
   }
   // No intersection
   return std::nullopt; 
@@ -965,22 +957,55 @@ std::optional<intersection>
 
   assert(t_min < t_upper_bound);
 
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This process is described very precisely in section
-  // 4.4.2.
-  //
-  // You can use the gfx::matrix::solve function you implemented in
-  // project 1. The textbook writes out how to use Cramer's rule here,
-  // and it's OK to follow those instructions, but it's easier and
-  // more concise to just call gfx::matrix::solve.
-  //
-  // After you compute the t, gamma, and beta values corresponding to
-  // the intersection, make sure that you compare gamma and beta
-  // precisely as described in the pseudocode on the bottom of page
-  // 79.
-  return std::nullopt;
+  vector3<double> e = ray.origin();
+  vector3<double> d = ray.direction();
+
+  // Compute t  
+  gfx::matrix<double, 3, 3> A{a_[0] - b_[0], a_[0] - c_[0], d[0], 
+                              a_[1] - b_[1], a_[1] - c_[1], d[1], 
+                              a_[2] - b_[2], a_[2] - c_[2], d[2]};
+
+  gfx::matrix<double, 3, 3> t_matrix {a_[0] - b_[0], a_[0] - c_[0], a_[0] - e[0], 
+                                      a_[1] - b_[1], a_[1] - c_[1], a_[1] - e[1], 
+                                      a_[2] - b_[2], a_[2] - c_[2], a_[2] - e[2]};
+  
+  double t = t_matrix.determinant()/A.determinant();
+  vector3<double> normal = c_.cross(a_);
+
+  if(t < t_min || t > t_upper_bound){
+    return std::nullopt;
+  }
+
+  // Compute gamma
+
+  gfx::matrix<double, 3, 3> gamma_matrix {a_[0] - b_[0], a_[0] - e[0], d[0], 
+                                          a_[1] - b_[1], a_[1] - e[1], d[1], 
+                                          a_[2] - b_[2], a_[2] - e[2], d[2]};
+  
+  double gamma = gamma_matrix.determinant()/A.determinant();
+  
+  if (gamma < 0 || gamma > 1){
+    return std::nullopt;
+  }
+
+  // Compute beta
+  gfx::matrix<double, 3, 3> beta_matrix {a_[0] - e[0], a_[0] - c_[0], d[0], 
+                                         a_[1] - e[1], a_[1] - c_[1], d[1], 
+                                         a_[2] - e[2], a_[2] - c_[2], d[2]};
+
+  
+  double beta = beta_matrix.determinant()/A.determinant();
+  vector3<double> b{ beta, gamma, t};                           
+
+  // intersection inside triangle
+  if (beta < 0 || beta > 1-gamma)
+  {
+    return std::nullopt;
+  }
+
+  // Intersection
+  vector3<double> location = A.solve(b);
+  return intersection(this, location.normalized(), normal.normalized(), t);
 }
 
 } // namespace gfx
