@@ -880,33 +880,26 @@ hdr_rgb blinn_phong_shader::shade(const scene& scene,
 				                          const camera& camera,
 				                          const intersection& xsect) const noexcept {
 
-  // TODO: Fill in the body of this function, then delete these
-  // skeleton comments.
-  //
-  // Hint: This algorithm is described in section 4.5, culminating in
-  // equation (4.4) in section 4.5.4. Implement that equation very
-  // carefully.
-  //
-  // We are assuming that every I_i is 1.0, so you don't need to
-  // include that coefficient; if we want a less-intense light, we
-  // change its color RGB values.
-  //
-  // After evaluating equation (4.4), clamp the intensity values to
-  // [0, 1]. Otherwise some very bright pixels could end up with
-  // intensity values greater than 1.
-  double L = 0.0;
-  for(const auto &light : scene.lights()){
-    auto l = light->location() - xsect.t();
-    vector3<double> h = (camera.v() + l).normalized();
+  double Lred = 0.0, Lblue = 0.0, Lgreen = 0.0;
+  vector3<double> normal = xsect.normal();
+  vector3<double> viewdir = (camera.eye() - xsect.location()).normalized();
 
-    L += diffuse_coefficient_ * std::max(0.0,xsect.normal()* l.normalized()) + specular_coefficient_ * std::pow(std::max(0.0,xsect.normal()*h), 10);
+  for(const auto &light : scene.lights())
+  {
+    auto l = (light->location() - xsect.location()).normalized();
+    vector3<double> h = (viewdir + l).normalized();
+
+    Lred    += (diffuse_coefficient_ * xsect.object().color().r()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().r()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
+    Lgreen  += (diffuse_coefficient_ * xsect.object().color().g()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().g()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
+    Lblue   += (diffuse_coefficient_ * xsect.object().color().b()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().b()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
   }
-  L = std::clamp(L, 0.0, 1.0);
-  const float Lr = std::clamp((ambient_coefficient_ * ambient_color_.r() + L),0.0,1.0);
-  const float Lg = std::clamp((ambient_coefficient_ * ambient_color_.g() + L),0.0,1.0);
-  const float Lb = std::clamp((ambient_coefficient_ * ambient_color_.b() + L),0.0,1.0);
-  auto color = xsect.object().color();
-  return hdr_rgb{color.r()*Lr, color.g()*Lg, color.b()*Lb}; 
+
+  // Adding Ambient coefficient
+  const float Lr  = std::clamp(ambient_coefficient_ * ambient_color_.r() + Lred, 0.0, 1.0);
+  const float Lg  = std::clamp(ambient_coefficient_ * ambient_color_.g() + Lgreen, 0.0, 1.0);
+  const float Lb  = std::clamp(ambient_coefficient_ * ambient_color_.b() + Lblue, 0.0, 1.0);
+
+  return hdr_rgb{Lr, Lg, Lb};
 }
 
 std::optional<intersection>
@@ -937,8 +930,7 @@ std::optional<intersection>
       {
         vector3<double> p = ray.origin() + ray.direction() * t;
         vector3<double> normal = (p - center_) * 2.0;
-        vector3<double> location = (p - center_)/radius_;
-        return intersection(this, location.normalized(), normal.normalized(), t);
+        return intersection(this, p.normalized(), normal.normalized(), t);
       }
       else
       {
@@ -970,7 +962,9 @@ std::optional<intersection>
                                       a_[2] - b_[2], a_[2] - c_[2], a_[2] - e[2]};
   
   double t = t_matrix.determinant()/A.determinant();
-  vector3<double> normal = c_.cross(a_);
+
+  // Calculate normal
+  vector3<double> normal = (a_ - b_).cross(b_ - c_);
 
   if(t < t_min || t > t_upper_bound){
     return std::nullopt;
