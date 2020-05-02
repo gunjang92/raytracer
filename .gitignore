@@ -30,3 +30,10 @@
 *.exe
 *.out
 *.app
+mrraytracer
+
+# IDE/Editors
+.vscode
+
+# Output
+*.png
