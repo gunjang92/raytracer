@@ -217,7 +217,7 @@ public:
   //
   // If there is an intersection within that t range, return an optional that
   // contains that intersection object.
-  std::optional<intersection> intersect(const view_ray& ray) const noexcept;
+  std::optional<intersection> intersect(const view_ray& ray, double t_min, double t_upper_bound) const noexcept;
 
   // Render the given scene and return the resulting image.
   hdr_image render() const noexcept;
@@ -782,18 +782,16 @@ scene scene::read_json(const std::string& path) noexcept(false) {
 // START OF TODO
 ///////////////////////////////////////////////////////////////////////////////
 
-std::optional<intersection> scene::intersect(const view_ray& ray) const noexcept {
+std::optional<intersection> scene::intersect(const view_ray& ray, double t_min, double t_upper_bound) const noexcept {
 
-  double t0 = 0.0;
-  double t1 = std::numeric_limits<double>::infinity();
   std::optional<intersection> result_intersect;
   for(const auto &object: objects_)
   {
-    auto ret = object->intersect(ray, t0, t1);
+    auto ret = object->intersect(ray, t_min, t_upper_bound);
     if(ret)
     {
         result_intersect = ret;
-        t1 = result_intersect->t();
+        t_upper_bound = result_intersect->t();
     }  
   }
   return result_intersect;
@@ -821,7 +819,7 @@ hdr_image scene::render() const noexcept {
 
       auto uv = viewport_->uv(x,y);
       auto ray = projection_->compute_view_ray(*camera_, uv[0], uv[1]);
-      auto xsect = intersect(ray);
+      auto xsect = intersect(ray, 0.0, gfx::DOUBLE_INFINITY);
       if(xsect)
       {
         auto color = shader_->shade(*this, *camera_, *xsect);
