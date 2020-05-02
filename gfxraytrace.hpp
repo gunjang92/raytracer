@@ -885,11 +885,15 @@ hdr_rgb blinn_phong_shader::shade(const scene& scene,
   for(const auto &light : scene.lights())
   {
     auto l = (light->location() - xsect.location()).normalized();
-    vector3<double> h = (viewdir + l).normalized();
+    auto shadowRay = view_ray(xsect.location(), l);
+    if(!scene.intersect(shadowRay, 1.0, gfx::DOUBLE_INFINITY))
+    {
+      vector3<double> h = (viewdir + l).normalized();
 
-    Lred    += (diffuse_coefficient_ * xsect.object().color().r()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().r()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
-    Lgreen  += (diffuse_coefficient_ * xsect.object().color().g()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().g()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
-    Lblue   += (diffuse_coefficient_ * xsect.object().color().b()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().b()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
+      Lred += (diffuse_coefficient_ * xsect.object().color().r()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().r()) * std::pow(std::max(0.0, normal * h), xsect.object().shininess());
+      Lgreen += (diffuse_coefficient_ * xsect.object().color().g()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().g()) * std::pow(std::max(0.0, normal * h), xsect.object().shininess());
+      Lblue += (diffuse_coefficient_ * xsect.object().color().b()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().b()) * std::pow(std::max(0.0, normal * h), xsect.object().shininess());
+    }
   }
 
   // Adding Ambient coefficient
