@@ -24,7 +24,8 @@ fast: scene_gtri_ortho_flat.png \
 			scene_2spheres_ortho_flat.png \
 			scene_2spheres_persp_flat.png \
 			scene_2spheres_ortho_phong.png \
-			scene_2spheres_persp_phong.png
+			scene_2spheres_persp_phong.png \
+			shadow.png
 
 slow: teatime.png
 
