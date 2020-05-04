@@ -217,7 +217,8 @@ public:
   //
   // If there is an intersection within that t range, return an optional that
   // contains that intersection object.
-  std::optional<intersection> intersect(const view_ray& ray) const noexcept;
+  //std::optional<intersection> intersect(const view_ray& ray) const noexcept;
+  std::optional<intersection> intersect(const view_ray& ray, double t_min, double t_upper_bound) const noexcept;
 
   // Render the given scene and return the resulting image.
   hdr_image render() const noexcept;
@@ -782,18 +783,16 @@ scene scene::read_json(const std::string& path) noexcept(false) {
 // START OF TODO
 ///////////////////////////////////////////////////////////////////////////////
 
-std::optional<intersection> scene::intersect(const view_ray& ray) const noexcept {
-
-  double t0 = 0.0;
-  double t1 = std::numeric_limits<double>::infinity();
+std::optional<intersection> scene::intersect(const view_ray& ray, double t_min, double t_upper_bound) const noexcept {
   std::optional<intersection> result_intersect;
+
   for(const auto &object: objects_)
   {
-    auto ret = object->intersect(ray, t0, t1);
+    auto ret = object->intersect(ray, t_min, t_upper_bound);
     if(ret)
     {
         result_intersect = ret;
-        t1 = result_intersect->t();
+        t_upper_bound = result_intersect->t();
     }  
   }
   return result_intersect;
@@ -821,7 +820,7 @@ hdr_image scene::render() const noexcept {
 
       auto uv = viewport_->uv(x,y);
       auto ray = projection_->compute_view_ray(*camera_, uv[0], uv[1]);
-      auto xsect = intersect(ray);
+      auto xsect = intersect(ray, 0.0, std::numeric_limits<double>::infinity());
       if(xsect)
       {
         auto color = shader_->shade(*this, *camera_, *xsect);
@@ -885,19 +884,29 @@ hdr_rgb blinn_phong_shader::shade(const scene& scene,
   vector3<double> viewdir = (camera.eye() - xsect.location()).normalized();
 
   for(const auto &light : scene.lights())
-  {
-    auto l = (light->location() - xsect.location()).normalized();
-    vector3<double> h = (viewdir + l).normalized();
+  {   
+    const auto shadowDir = (light->location() - xsect.location()).normalized();
+    const auto shadowRay = view_ray(xsect.location(), shadowDir);
 
-    Lred    += (diffuse_coefficient_ * xsect.object().color().r()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().r()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
-    Lgreen  += (diffuse_coefficient_ * xsect.object().color().g()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().g()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
-    Lblue   += (diffuse_coefficient_ * xsect.object().color().b()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().b()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
-  }
+    if(!scene.intersect(shadowRay, 0.0, std::numeric_limits<double>::infinity()))
+    {
+      auto l = (light->location() - xsect.location()).normalized();
+      vector3<double> h = (viewdir + l).normalized();
+
+      Lred    += (diffuse_coefficient_ * xsect.object().color().r()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().r()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
+      Lgreen  += (diffuse_coefficient_ * xsect.object().color().g()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().g()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
+      Lblue   += (diffuse_coefficient_ * xsect.object().color().b()) * std::max(0.0, normal * l) + (specular_coefficient_ * light->color().b()) * std::pow(std::max(0.0,normal * h), xsect.object().shininess());
+    }
+    else
+    {
+      std::cout<<"Shadow";
+    }
+   } 
 
   // Adding Ambient coefficient
   const float Lr  = std::clamp(ambient_coefficient_ * ambient_color_.r() + Lred, 0.0, 1.0);
-  const float Lg  = std::clamp(ambient_coefficient_ * ambient_color_.g() + Lgreen, 0.0, 1.0);
-  const float Lb  = std::clamp(ambient_coefficient_ * ambient_color_.b() + Lblue, 0.0, 1.0);
+  const float Lg  = std::clamp(ambient_coefficient_ * ambient_color_.g() +Lgreen, 0.0, 1.0);
+  const float Lb  = std::clamp(ambient_coefficient_ * ambient_color_.b() +Lblue, 0.0, 1.0);
 
   return hdr_rgb{Lr, Lg, Lb};
 }
