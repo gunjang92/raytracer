@@ -888,7 +888,8 @@ hdr_rgb blinn_phong_shader::shade(const scene& scene,
     const auto shadowDir = (light->location() - xsect.location()).normalized();
     const auto shadowRay = view_ray(xsect.location(), shadowDir);
 
-    if(!scene.intersect(shadowRay, 0.0, std::numeric_limits<double>::infinity()))
+    const auto shadow_xsect = scene.intersect(shadowRay, 0.1, gfx::DOUBLE_INFINITY);
+    if(!shadow_xsect)
     {
       auto l = (light->location() - xsect.location()).normalized();
       vector3<double> h = (viewdir + l).normalized();
@@ -899,7 +900,7 @@ hdr_rgb blinn_phong_shader::shade(const scene& scene,
     }
     else
     {
-      std::cout<<"Shadow";
+      std::cout << "object t: " << xsect.t() << " shadow t: " << shadow_xsect->t() << std::endl;
     }
    } 
 

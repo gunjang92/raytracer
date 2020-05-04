@@ -18,19 +18,19 @@
     },
     "materials" : [
       { "name" : "red", "color" : [1.0, 0.0, 0.0], "shininess" : 5.0 },
-      { "name" : "grey", "color" : [0.5, 0.5, 0.5], "shininess" : 5.0 }
+      { "name" : "green", "color" : [0.2, 0.9, 0.2], "shininess" : 5.0 }
     ],
     "point_lights" : [
-      { "location" : [-0.3, 0.0, 2.0], "intensity" : 2.1, "color" : [1.0, 1.0, 1.0] },
-      { "location" : [ 0.0, 3.0, 2.0], "intensity" : 1.1, "color" : [1.0, 1.0, 1.0] }
+      { "location" : [ 0.0, 1.0, 3.0 ], "intensity" : 2.1, "color" : [1.0, 1.0, 1.0] },
+      { "location" : [ 0.0, 3.0, 2.0 ], "intensity" : 1.1, "color" : [1.0, 1.0, 1.0] }
     ],
     "triangles" : [
-        {"material" : "grey",
+        {"material" : "green",
            "a" : [-1.0, -0.5, 3.0],
            "b" : [ 1.0, -0.5, 3.0],
            "c" : [-1.0, -0.5, 1.0]
         },
-        { "material" : "grey",
+        { "material" : "green",
           "a" : [ 1.0, -0.5, 3.0],
           "b" : [ 1.0, -0.5, 1.0],
       	  "c" : [-1.0, -0.5, 1.0]
