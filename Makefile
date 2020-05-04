@@ -17,14 +17,13 @@ mrraytracer: headers libraries mrraytracer.cpp
 %.png : %.json mrraytracer
 	./mrraytracer $< $@
 
-fast: scene_gtri_ortho_flat.png \
-	    scene_gtri_persp_flat.png \
-			scene_gtri_ortho_phong.png \
-			scene_gtri_persp_phong.png \
-			scene_2spheres_ortho_flat.png \
-			scene_2spheres_persp_flat.png \
-			scene_2spheres_ortho_phong.png \
-			scene_2spheres_persp_phong.png
+fast: 		scene_sphere_shader.png 
+#			scene_gtri_ortho_flat.png \
+# 	    scene_gtri_persp_flat.png \
+# 			scene_gtri_ortho_phong.png \
+# 			scene_gtri_persp_phong.png \
+# 			scene_2spheres_ortho_phong.png \
+#			scene_2spheres_persp_phong.png
 
 slow: teatime.png
 
